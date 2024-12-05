@@ -1,17 +1,27 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from tifffile import TiffFile
-import os
-from skimage import filters, measure, morphology
-import re
-from skimage.morphology import binary_erosion, disk
 import pandas as pd
+import matplotlib.pyplot as plt
+from skimage import filters
+from skimage.morphology import binary_erosion, disk
+from tifffile import TiffFile
+import re
+import argparse
 
-# Define pixel size in nanometers (8.21 Å = 0.821 nm)
-PIXEL_SIZE_NM = 32.84
+
+# Define paths
+INPUT_FOLDER_IM = "/Users/mfras/Downloads/Teddy_Code_Praktikum/Segmented_IM"
+INPUT_FOLDER_OM = "/Users/mfras/Downloads/Teddy_Code_Praktikum/Segmented_OM"
+OUTPUT_FOLDER_CSV = "/Users/mfras/Downloads/Teddy_Code_Praktikum/data.csv"
+OUTPUT_FOLDER_PLOTS = "/Users/mfras/Downloads/Teddy_Code_Praktikum/Plots"
+
+
+# Define Image processing settings
+PIXEL_SIZE_NM = 32.84  # Define pixel size in nanometers (8.21 Å = 0.821 nm)
 SPACING_NM = 500  # Spacing between points in nm (updated to 500 nm)
 MIN_CELL_AREA = 500  # Minimum area of a cell to consider (in pixels)
 CLOSING_RADIUS = 10  # Radius for morphological closing to connect fragments
+LOWER_BOUND = 0.3  # * mean_distance - exclude measurements outside these thresh holds
+UPPER_BOUND = 3  # * mean_distance - exclude measurements outside these thresh holds
 
 
 def load_tiff_stack(file_path):
@@ -169,9 +179,9 @@ def process_membranes(input_folder_IM, input_folder_OM, output_folder_plots=None
 
         mean_distance = np.mean(distances)
 
-        # Define lower and upper boundaries
-        lower_bound = 0.3 * mean_distance  # Adjust this factor as needed
-        upper_bound = 3 * mean_distance
+        lower_bound = LOWER_BOUND * mean_distance
+
+        upper_bound = UPPER_BOUND * mean_distance
 
         # Filter indices based on both boundaries
         valid_indices = [i for i, d in enumerate(distances) if lower_bound <= d <= upper_bound]
@@ -188,20 +198,40 @@ def process_membranes(input_folder_IM, input_folder_OM, output_folder_plots=None
     return distance_data
 
 
-# Define paths and run the script
-input_folder_IM = "/Users/mfras/Downloads/Teddy_Code_Praktikum/Segmented_IM"
-input_folder_OM = "/Users/mfras/Downloads/Teddy_Code_Praktikum/Segmented_OM"
-output_csv = "/Users/mfras/Downloads/Teddy_Code_Praktikum/data.csv"
-output_folder_plots = "/Users/mfras/Downloads/Teddy_Code_Praktikum/Plots"
+def main():
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Process membranes and calculate distances.")
 
-distance_results = process_membranes(input_folder_IM, input_folder_OM, output_folder_plots)
+    # Add arguments
+    parser.add_argument("--IM", type=str,
+                        default=INPUT_FOLDER_IM,
+                        help="Path to the folder containing inner membrane segmentations.")
+    parser.add_argument("--OM", type=str,
+                        default=INPUT_FOLDER_OM,
+                        help="Path to the folder containing outer membrane segmentations.")
+    parser.add_argument("--csv", type=str, default=OUTPUT_FOLDER_CSV,
+                        help="Path to save the output CSV file.")
+    parser.add_argument("--plots", type=str, default=OUTPUT_FOLDER_PLOTS,
+                        help="Folder to save generated plots.")
 
-df = pd.DataFrame(distance_results, columns=["File Name", "Cell ID", "Distance"])
+    # Parse arguments
+    args = parser.parse_args()
 
-if df.empty:
-    print("No data collected. Please check your image preprocessing and labeling.")
-else:
-    # Save the DataFrame to a CSV file
-    df.to_csv(output_csv, index=False)
-    print("---->")
-    print(f"Data saved to {output_csv}")
+    # Ensure output folders exist
+    os.makedirs(args.output_folder_plots, exist_ok=True)
+
+    # Process membranes
+    distance_results = process_membranes(args.input_folder_IM, args.input_folder_OM, args.output_folder_plots)
+
+    # Save results to CSV
+    df = pd.DataFrame(distance_results, columns=["File Name", "Cell ID", "Distance"])
+    if df.empty:
+        print("No data collected. Please check your image preprocessing and labeling.")
+    else:
+        df.to_csv(args.output_csv, index=False)
+        print("")
+        print(f"Data saved to {args.output_csv}")
+
+
+if __name__ == "__main__":
+    main()
